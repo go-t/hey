@@ -18,44 +18,14 @@ package main
 import (
 	"flag"
 	"fmt"
-	"io/ioutil"
-	"net/http"
 	gourl "net/url"
 	"os"
-	"regexp"
 	"runtime"
-	"strings"
 
-	"github.com/rakyll/hey/requester"
+	"github.com/go-T/hey/requester"
 )
-
-const (
-	headerRegexp = `^([\w-]+):\s*(.+)`
-	authRegexp   = `^(.+):([^\s].+)`
-)
-
-type headerSlice []string
-
-func (h *headerSlice) String() string {
-	return fmt.Sprintf("%s", *h)
-}
-
-func (h *headerSlice) Set(value string) error {
-	*h = append(*h, value)
-	return nil
-}
 
 var (
-	headerslice headerSlice
-	m           = flag.String("m", "GET", "")
-	headers     = flag.String("h", "", "")
-	body        = flag.String("d", "", "")
-	bodyFile    = flag.String("D", "", "")
-	accept      = flag.String("A", "", "")
-	contentType = flag.String("T", "text/html", "")
-	authHeader  = flag.String("a", "", "")
-	hostHeader  = flag.String("host", "", "")
-
 	output = flag.String("o", "", "")
 
 	c = flag.Int("c", 50, "")
@@ -90,8 +60,9 @@ Options:
       For example, -H "Accept: text/html" -H "Content-Type: application/xml" .
   -t  Timeout for each request in seconds. Default is 20, use 0 for infinite.
   -A  HTTP Accept header.
-  -d  HTTP request body.
+  -d  HTTP url encoded raw data.
   -D  HTTP request body from file. For example, /home/user/file.txt or ./file.txt.
+  -F  HTTP form data.
   -T  Content-type, defaults to "text/html".
   -a  Basic authentication, username:password.
   -x  HTTP Proxy address as host:port.
@@ -113,8 +84,6 @@ func main() {
 		fmt.Fprint(os.Stderr, fmt.Sprintf(usage, runtime.NumCPU()))
 	}
 
-	flag.Var(&headerslice, "H", "")
-
 	flag.Parse()
 	if flag.NArg() < 1 {
 		usageAndExit("")
@@ -133,53 +102,9 @@ func main() {
 		usageAndExit("-n cannot be less than -c.")
 	}
 
-	url := flag.Args()[0]
-	method := strings.ToUpper(*m)
-
-	// set content-type
-	header := make(http.Header)
-	header.Set("Content-Type", *contentType)
-	// set any other additional headers
-	if *headers != "" {
-		usageAndExit("Flag '-h' is deprecated, please use '-H' instead.")
-	}
-	// set any other additional repeatable headers
-	for _, h := range headerslice {
-		match, err := parseInputWithRegexp(h, headerRegexp)
-		if err != nil {
-			usageAndExit(err.Error())
-		}
-		header.Set(match[1], match[2])
-	}
-
-	if *accept != "" {
-		header.Set("Accept", *accept)
-	}
-
-	// set basic auth if set
-	var username, password string
-	if *authHeader != "" {
-		match, err := parseInputWithRegexp(*authHeader, authRegexp)
-		if err != nil {
-			usageAndExit(err.Error())
-		}
-		username, password = match[1], match[2]
-	}
-
-	var bodyAll []byte
-	if *body != "" {
-		bodyAll = []byte(*body)
-	}
-	if *bodyFile != "" {
-		slurp, err := ioutil.ReadFile(*bodyFile)
-		if err != nil {
-			errAndExit(err.Error())
-		}
-		bodyAll = slurp
-	}
-
-	if *output != "csv" && *output != "" {
-		usageAndExit("Invalid output type; only csv is supported.")
+	req, body, err := makeRequest(flag.Args()[0])
+	if err != nil {
+		usageAndExit(err.Error())
 	}
 
 	var proxyURL *gourl.URL
@@ -191,23 +116,13 @@ func main() {
 		}
 	}
 
-	req, err := http.NewRequest(method, url, nil)
-	if err != nil {
-		usageAndExit(err.Error())
-	}
-	req.Header = header
-	if username != "" || password != "" {
-		req.SetBasicAuth(username, password)
-	}
-
-	// set host header if set
-	if *hostHeader != "" {
-		req.Host = *hostHeader
+	if *output != "csv" && *output != "" {
+		usageAndExit("Invalid output type; only csv is supported.")
 	}
 
 	(&requester.Work{
 		Request:            req,
-		RequestBody:        bodyAll,
+		RequestBody:        body,
 		N:                  num,
 		C:                  conc,
 		QPS:                q,
@@ -235,13 +150,4 @@ func usageAndExit(msg string) {
 	flag.Usage()
 	fmt.Fprintf(os.Stderr, "\n")
 	os.Exit(1)
-}
-
-func parseInputWithRegexp(input, regx string) ([]string, error) {
-	re := regexp.MustCompile(regx)
-	matches := re.FindStringSubmatch(input)
-	if len(matches) < 1 {
-		return nil, fmt.Errorf("could not parse the provided input; input = %v", input)
-	}
-	return matches, nil
 }
