@@ -10,8 +10,11 @@ import (
 	"mime/multipart"
 	"net/http"
 	gourl "net/url"
+	"os"
 	"regexp"
 	"strings"
+
+	"github.com/go-T/hey/requester"
 )
 
 const (
@@ -43,6 +46,7 @@ var (
 	contentType = flag.String("T", "", "")
 	authHeader  = flag.String("a", "", "")
 	hostHeader  = flag.String("host", "", "")
+	traceFile   = flag.String("trace", "", "")
 )
 
 func init() {
@@ -52,7 +56,9 @@ func init() {
 }
 
 func makeRequest(url string) (*http.Request, []byte, error) {
-	if bool2int(len(queryslice) != 0)+bool2int(len(formslice) != 0)+bool2int(len(*bodyFile) != 0) > 1 {
+	if bool2int(len(queryslice) != 0)+
+		bool2int(len(formslice) != 0)+
+		bool2int(len(*bodyFile) != 0) > 1 {
 		return nil, nil, errors.New("conflict flag -F, -d, -D")
 	}
 
@@ -61,13 +67,17 @@ func makeRequest(url string) (*http.Request, []byte, error) {
 		body   []byte
 		ctype  string
 		method string
+		h      = helper{
+			escape:   gourl.QueryEscape,
+			readFile: ioutil.ReadFile,
+		}
 	)
 	if len(queryslice) != 0 {
 		ctype = "application/x-www-form-urlencoded"
-		body, err = urlEncoded(queryslice, gourl.QueryEscape)
+		body, err = h.urlEncoded(queryslice)
 	} else if len(formslice) != 0 {
 		ctype = "multipart/form-data; boundary=" + boundary
-		body, err = formData(formslice)
+		body, err = h.formData(formslice, boundary)
 	} else if *bodyFile != "" {
 		ctype = *contentType
 		body, err = ioutil.ReadFile(*bodyFile)
@@ -77,9 +87,6 @@ func makeRequest(url string) (*http.Request, []byte, error) {
 	}
 	header := make(http.Header)
 	header.Set("Content-Type", ctype)
-	if len(body) > 0 {
-		header.Set("Content-Length", fmt.Sprintf("%d", len(body)))
-	}
 
 	if *m == "" {
 		if len(body) > 0 {
@@ -87,6 +94,8 @@ func makeRequest(url string) (*http.Request, []byte, error) {
 		} else {
 			method = "GET"
 		}
+	} else {
+		method = *m
 	}
 
 	// set any other additional headers
@@ -129,7 +138,30 @@ func makeRequest(url string) (*http.Request, []byte, error) {
 	if *hostHeader != "" {
 		req.Host = *hostHeader
 	}
+
+	if len(body) > 0 {
+		req.ContentLength = int64(len(body))
+	}
+
+	if *traceFile != "" {
+		out, err := os.Create(*traceFile)
+		if err != nil {
+			return nil, nil, err
+		}
+		defer out.Close()
+
+		request := requester.CloneRequest(req, body)
+		err = request.Write(out)
+		if err != nil {
+			return nil, nil, err
+		}
+	}
 	return req, body, nil
+}
+
+type helper struct {
+	escape   func(string) string
+	readFile func(string) ([]byte, error)
 }
 
 // -data value
@@ -137,7 +169,8 @@ func makeRequest(url string) (*http.Request, []byte, error) {
 // -data name=value
 // -data name=@file
 // -data name@file
-func urlEncoded(data stringSlice, escape func(string) string) ([]byte, error) {
+func (h helper) urlEncoded(data stringSlice) ([]byte, error) {
+
 	var b bytes.Buffer
 	w := bufio.NewWriter(&b)
 	for _, item := range data {
@@ -154,14 +187,14 @@ func urlEncoded(data stringSlice, escape func(string) string) ([]byte, error) {
 		}
 		parts = strings.SplitN(value, "@", 2)
 		if len(parts) == 2 {
-			data, err := ioutil.ReadFile(parts[1])
+			data, err := h.readFile(parts[1])
 			if err != nil {
 				return nil, fmt.Errorf("load file %s error:%s", parts[1], err.Error())
 			}
-			w.WriteString(escape(parts[0]))
-			w.WriteString(escape(string(data)))
+			w.WriteString(h.escape(parts[0]))
+			w.WriteString(h.escape(string(data)))
 		} else {
-			w.WriteString(escape(value))
+			w.WriteString(h.escape(value))
 		}
 		w.WriteByte('&')
 		w.Flush()
@@ -171,7 +204,8 @@ func urlEncoded(data stringSlice, escape func(string) string) ([]byte, error) {
 
 // -form name=value
 // -form name=@file
-func formData(form stringSlice) ([]byte, error) {
+func (h helper) formData(form stringSlice, boundary string) ([]byte, error) {
+
 	var b bytes.Buffer
 	var w = multipart.NewWriter(&b)
 	w.SetBoundary(boundary)
@@ -183,7 +217,7 @@ func formData(form stringSlice) ([]byte, error) {
 		}
 		key, value := match[1], match[2]
 		if len(value) > 0 && value[:1] == "@" {
-			data, err := ioutil.ReadFile(value[1:])
+			data, err := h.readFile(value[1:])
 			if err != nil {
 				return nil, fmt.Errorf("load file %s error:%s", value[1:], err.Error())
 			}
@@ -193,7 +227,6 @@ func formData(form stringSlice) ([]byte, error) {
 				return nil, fmt.Errorf("create form field %s error:%s", key, err.Error())
 			}
 			field.Write(data)
-			w.Close()
 		} else {
 			err := w.WriteField(key, value)
 			if err != nil {
@@ -201,6 +234,7 @@ func formData(form stringSlice) ([]byte, error) {
 			}
 		}
 	}
+	w.Close()
 	return b.Bytes(), nil
 }
 
