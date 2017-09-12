@@ -213,9 +213,10 @@ func (b *Work) runWorker(n int) {
 		TLSClientConfig: &tls.Config{
 			InsecureSkipVerify: true,
 		},
-		DisableCompression: b.DisableCompression,
-		DisableKeepAlives:  b.DisableKeepAlives,
-		Proxy:              http.ProxyURL(b.ProxyAddr),
+		MaxIdleConnsPerHost: b.C / 10,
+		DisableCompression:  b.DisableCompression,
+		DisableKeepAlives:   b.DisableKeepAlives,
+		Proxy:               http.ProxyURL(b.ProxyAddr),
 	}
 	if b.H2 {
 		http2.ConfigureTransport(tr)

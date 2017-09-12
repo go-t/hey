@@ -1,0 +1,72 @@
+curl -d a.txt -d a+txt http://
+> a.txt&a+txt
+> 
+curl -d =a.txt -d =a+txt http://
+> =a.txt&=a+txt
+> 
+curl -d b=a.txt -d b=a+txt http://
+> b=a.txt&b=a+txt
+> 
+curl -d @a.txt -d @a+txt http://
+> a1a2&
+> 
+curl -d b@a.txt -d b@a+txt http://
+> b@a.txt&b@a+txt
+> 
+curl -d b=@a.txt -d b=@a+txt http://
+> b=@a.txt&b=@a+txt
+> 
+curl --data-binary a.txt --data-binary a+txt http://
+> a.txt&a+txt
+> 
+curl --data-binary =a.txt --data-binary =a+txt http://
+> =a.txt&=a+txt
+> 
+curl --data-binary b=a.txt --data-binary b=a+txt http://
+> b=a.txt&b=a+txt
+> 
+curl --data-binary @a.txt --data-binary @a+txt http://
+> a1.a2.&
+> 
+curl --data-binary b@a.txt --data-binary b@a+txt http://
+> b@a.txt&b@a+txt
+> 
+curl --data-binary b=@a.txt --data-binary b=@a+txt http://
+> b=@a.txt&b=@a+txt
+> 
+curl --data-raw a.txt --data-raw a+txt http://
+> a.txt&a+txt
+> 
+curl --data-raw =a.txt --data-raw =a+txt http://
+> =a.txt&=a+txt
+> 
+curl --data-raw b=a.txt --data-raw b=a+txt http://
+> b=a.txt&b=a+txt
+> 
+curl --data-raw @a.txt --data-raw @a+txt http://
+> @a.txt&@a+txt
+> 
+curl --data-raw b@a.txt --data-raw b@a+txt http://
+> b@a.txt&b@a+txt
+> 
+curl --data-raw b=@a.txt --data-raw b=@a+txt http://
+> b=@a.txt&b=@a+txt
+> 
+curl --data-urlencode a.txt --data-urlencode a+txt http://
+> a.txt&a%2Btxt
+> 
+curl --data-urlencode =a.txt --data-urlencode =a+txt http://
+> a.txt&a%2Btxt
+> 
+curl --data-urlencode b=a.txt --data-urlencode b=a+txt http://
+> b=a.txt&b=a%2Btxt
+> 
+curl --data-urlencode @a.txt --data-urlencode @a+txt http://
+> a1%0Aa2%0A&
+> 
+curl --data-urlencode b@a.txt --data-urlencode b@a+txt http://
+> b=a1%0Aa2%0A&
+> 
+curl --data-urlencode b=@a.txt --data-urlencode b=@a+txt http://
+> b=%40a.txt&b=%40a%2Btxt
+> 
