@@ -213,7 +213,8 @@ func (b *Work) runWorker(n int) {
 		TLSClientConfig: &tls.Config{
 			InsecureSkipVerify: true,
 		},
-		MaxIdleConnsPerHost: b.C / 10,
+		MaxIdleConns:        b.C / 8,
+		MaxIdleConnsPerHost: b.C / 8,
 		DisableCompression:  b.DisableCompression,
 		DisableKeepAlives:   b.DisableKeepAlives,
 		Proxy:               http.ProxyURL(b.ProxyAddr),
