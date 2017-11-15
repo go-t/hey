@@ -21,6 +21,7 @@ import (
 	gourl "net/url"
 	"os"
 	"runtime"
+	"syscall"
 
 	"github.com/go-T/hey/requester"
 )
@@ -36,6 +37,8 @@ var (
 	h2 = flag.Bool("h2", false, "")
 
 	cpus = flag.Int("cpus", runtime.GOMAXPROCS(-1), "")
+
+	nofile = flag.Int("nofile", 0, "ulimit nofile")
 
 	disableCompression = flag.Bool("disable-compression", false, "")
 	disableKeepAlives  = flag.Bool("disable-keepalive", false, "")
@@ -77,6 +80,7 @@ Options:
                         (default for current machine is %d cores)
   -more                 Provides information on DNS lookup, dialup, request and
                         response timings.
+  -nofile               nofile of ulimit.
 `
 
 func main() {
@@ -87,6 +91,14 @@ func main() {
 	flag.Parse()
 	if flag.NArg() < 1 {
 		usageAndExit("")
+	}
+
+	if *nofile > 0 {
+		nofile := uint64(*nofile)
+		err := syscall.Setrlimit(syscall.RLIMIT_NOFILE, &syscall.Rlimit{nofile, nofile})
+		if err != nil {
+			usageAndExit(fmt.Sprintf("set nofile %v err:%v", nofile, err))
+		}
 	}
 
 	runtime.GOMAXPROCS(*cpus)
