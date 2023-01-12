@@ -47,6 +47,8 @@ var (
 	disableKeepAlives  = flag.Bool("disable-keepalive", false, "")
 	disableRedirects   = flag.Bool("disable-redirects", false, "")
 	proxyAddr          = flag.String("x", "", "")
+
+	enableTrace = flag.Bool("more", false, "")
 )
 
 var usage = `Usage: hey [options...] <url>
@@ -147,22 +149,6 @@ func main() {
 		usageAndExit("Invalid output type; only csv is supported.")
 	}
 
-	ua := header.Get("User-Agent")
-	if ua == "" {
-		ua = heyUA
-	} else {
-		ua += " " + heyUA
-	}
-	header.Set("User-Agent", ua)
-
-	// set userAgent header if set
-	if *userAgent != "" {
-		ua = *userAgent + " " + heyUA
-		header.Set("User-Agent", ua)
-	}
-
-	req.Header = header
-
 	w := &requester.Work{
 		Request:            req,
 		RequestBody:        body,
@@ -176,6 +162,8 @@ func main() {
 		H2:                 *h2,
 		ProxyAddr:          proxyURL,
 		Output:             *output,
+
+		EnableTrace: *enableTrace,
 	}
 	w.Init()
 

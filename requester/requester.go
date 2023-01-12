@@ -66,6 +66,9 @@ type Work struct {
 	// H2 is an option to make HTTP/2 requests
 	H2 bool
 
+	// EnableTrace is an option to enable httpTrace
+	EnableTrace bool
+
 	// Timeout in seconds.
 	Timeout int
 
@@ -154,25 +157,27 @@ func (b *Work) makeRequest(c *http.Client) {
 	if b.EnableTrace {
 		trace := &httptrace.ClientTrace{
 			DNSStart: func(info httptrace.DNSStartInfo) {
-				dnsStart = time.Now()
+				dnsStart = now()
 			},
 			DNSDone: func(dnsInfo httptrace.DNSDoneInfo) {
-				dnsDuration = time.Now().Sub(dnsStart)
+				dnsDuration = now() - dnsStart
 			},
 			GetConn: func(h string) {
-				connStart = time.Now()
+				connStart = now()
 			},
 			GotConn: func(connInfo httptrace.GotConnInfo) {
-				connDuration = time.Now().Sub(connStart)
-				reqStart = time.Now()
+				if !connInfo.Reused {
+					connDuration = now() - connStart
+				}
+				reqStart = now()
 			},
 			WroteRequest: func(w httptrace.WroteRequestInfo) {
-				reqDuration = time.Now().Sub(reqStart)
-				delayStart = time.Now()
+				reqDuration = now() - reqStart
+				delayStart = now()
 			},
 			GotFirstResponseByte: func() {
-				delayDuration = time.Now().Sub(delayStart)
-				resStart = time.Now()
+				delayDuration = now() - delayStart
+				resStart = now()
 			},
 		}
 		req = req.WithContext(httptrace.WithClientTrace(req.Context(), trace))

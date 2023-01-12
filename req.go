@@ -22,6 +22,7 @@ const (
 	headerRegexp = `^([\w-]+):\s*(.+)`
 	authRegexp   = `^(.+):([^\s].+)`
 	boundary     = "--179CB67133D24A71A3DA3CC21F6F375F--"
+	heyUA        = "hey/0.0.1"
 )
 
 type stringSlice []string
@@ -46,6 +47,7 @@ var (
 	contentType = flag.String("T", "", "")
 	authHeader  = flag.String("a", "", "")
 	hostHeader  = flag.String("host", "", "")
+	userAgent   = flag.String("U", "", "")
 	traceFile   = flag.String("trace", "", "")
 )
 
@@ -123,6 +125,20 @@ func makeRequest(url string) (*http.Request, []byte, error) {
 			return nil, nil, err
 		}
 		username, password = match[1], match[2]
+	}
+
+	ua := header.Get("User-Agent")
+	if ua == "" {
+		ua = heyUA
+	} else {
+		ua += " " + heyUA
+	}
+	header.Set("User-Agent", ua)
+
+	// set userAgent header if set
+	if *userAgent != "" {
+		ua = *userAgent + " " + heyUA
+		header.Set("User-Agent", ua)
 	}
 
 	req, err := http.NewRequest(method, url, nil)
