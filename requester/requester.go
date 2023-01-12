@@ -150,38 +150,33 @@ func (b *Work) makeRequest(c *http.Client) {
 	var code int
 	var dnsStart, connStart, resStart, reqStart, delayStart time.Duration
 	var dnsDuration, connDuration, resDuration, reqDuration, delayDuration time.Duration
-	var req *http.Request
-	if b.RequestFunc != nil {
-		req = b.RequestFunc()
-	} else {
-		req = cloneRequest(b.Request, b.RequestBody)
+	req := CloneRequest(b.Request, b.RequestBody)
+	if b.EnableTrace {
+		trace := &httptrace.ClientTrace{
+			DNSStart: func(info httptrace.DNSStartInfo) {
+				dnsStart = time.Now()
+			},
+			DNSDone: func(dnsInfo httptrace.DNSDoneInfo) {
+				dnsDuration = time.Now().Sub(dnsStart)
+			},
+			GetConn: func(h string) {
+				connStart = time.Now()
+			},
+			GotConn: func(connInfo httptrace.GotConnInfo) {
+				connDuration = time.Now().Sub(connStart)
+				reqStart = time.Now()
+			},
+			WroteRequest: func(w httptrace.WroteRequestInfo) {
+				reqDuration = time.Now().Sub(reqStart)
+				delayStart = time.Now()
+			},
+			GotFirstResponseByte: func() {
+				delayDuration = time.Now().Sub(delayStart)
+				resStart = time.Now()
+			},
+		}
+		req = req.WithContext(httptrace.WithClientTrace(req.Context(), trace))
 	}
-	trace := &httptrace.ClientTrace{
-		DNSStart: func(info httptrace.DNSStartInfo) {
-			dnsStart = now()
-		},
-		DNSDone: func(dnsInfo httptrace.DNSDoneInfo) {
-			dnsDuration = now() - dnsStart
-		},
-		GetConn: func(h string) {
-			connStart = now()
-		},
-		GotConn: func(connInfo httptrace.GotConnInfo) {
-			if !connInfo.Reused {
-				connDuration = now() - connStart
-			}
-			reqStart = now()
-		},
-		WroteRequest: func(w httptrace.WroteRequestInfo) {
-			reqDuration = now() - reqStart
-			delayStart = now()
-		},
-		GotFirstResponseByte: func() {
-			delayDuration = now() - delayStart
-			resStart = now()
-		},
-	}
-	req = req.WithContext(httptrace.WithClientTrace(req.Context(), trace))
 	resp, err := c.Do(req)
 	if err == nil {
 		size = resp.ContentLength
@@ -240,7 +235,8 @@ func (b *Work) runWorkers() {
 			InsecureSkipVerify: true,
 			ServerName:         b.Request.Host,
 		},
-		MaxIdleConnsPerHost: min(b.C, maxIdleConn),
+		MaxIdleConns:        b.C / 8,
+		MaxIdleConnsPerHost: b.C / 8,
 		DisableCompression:  b.DisableCompression,
 		DisableKeepAlives:   b.DisableKeepAlives,
 		Proxy:               http.ProxyURL(b.ProxyAddr),
@@ -264,7 +260,7 @@ func (b *Work) runWorkers() {
 
 // cloneRequest returns a clone of the provided *http.Request.
 // The clone is a shallow copy of the struct and its Header map.
-func cloneRequest(r *http.Request, body []byte) *http.Request {
+func CloneRequest(r *http.Request, body []byte) *http.Request {
 	// shallow copy of the struct
 	r2 := new(http.Request)
 	*r2 = *r

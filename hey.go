@@ -18,37 +18,18 @@ package main
 import (
 	"flag"
 	"fmt"
-	"io/ioutil"
 	"math"
-	"net/http"
 	gourl "net/url"
 	"os"
 	"os/signal"
-	"regexp"
 	"runtime"
-	"strings"
+	"syscall"
 	"time"
 
-	"github.com/rakyll/hey/requester"
-)
-
-const (
-	headerRegexp = `^([\w-]+):\s*(.+)`
-	authRegexp   = `^(.+):([^\s].+)`
-	heyUA        = "hey/0.0.1"
+	"github.com/go-T/hey/requester"
 )
 
 var (
-	m           = flag.String("m", "GET", "")
-	headers     = flag.String("h", "", "")
-	body        = flag.String("d", "", "")
-	bodyFile    = flag.String("D", "", "")
-	accept      = flag.String("A", "", "")
-	contentType = flag.String("T", "text/html", "")
-	authHeader  = flag.String("a", "", "")
-	hostHeader  = flag.String("host", "", "")
-	userAgent   = flag.String("U", "", "")
-
 	output = flag.String("o", "", "")
 
 	c = flag.Int("c", 50, "")
@@ -59,6 +40,8 @@ var (
 
 	h2   = flag.Bool("h2", false, "")
 	cpus = flag.Int("cpus", runtime.GOMAXPROCS(-1), "")
+
+	nofile = flag.Int("nofile", 0, "ulimit nofile")
 
 	disableCompression = flag.Bool("disable-compression", false, "")
 	disableKeepAlives  = flag.Bool("disable-keepalive", false, "")
@@ -85,8 +68,9 @@ Options:
       For example, -H "Accept: text/html" -H "Content-Type: application/xml" .
   -t  Timeout for each request in seconds. Default is 20, use 0 for infinite.
   -A  HTTP Accept header.
-  -d  HTTP request body.
+  -d  HTTP url encoded raw data.
   -D  HTTP request body from file. For example, /home/user/file.txt or ./file.txt.
+  -F  HTTP form data.
   -T  Content-type, defaults to "text/html".
   -U  User-Agent, defaults to version "hey/0.0.1".
   -a  Basic authentication, username:password.
@@ -101,6 +85,9 @@ Options:
   -disable-redirects    Disable following of HTTP redirects
   -cpus                 Number of used cpu cores.
                         (default for current machine is %d cores)
+  -more                 Provides information on DNS lookup, dialup, request and
+                        response timings.
+  -nofile               nofile of ulimit.
 `
 
 func main() {
@@ -108,12 +95,17 @@ func main() {
 		fmt.Fprint(os.Stderr, fmt.Sprintf(usage, runtime.NumCPU()))
 	}
 
-	var hs headerSlice
-	flag.Var(&hs, "H", "")
-
 	flag.Parse()
 	if flag.NArg() < 1 {
 		usageAndExit("")
+	}
+
+	if *nofile > 0 {
+		nofile := uint64(*nofile)
+		err := syscall.Setrlimit(syscall.RLIMIT_NOFILE, &syscall.Rlimit{nofile, nofile})
+		if err != nil {
+			usageAndExit(fmt.Sprintf("set nofile %v err:%v", nofile, err))
+		}
 	}
 
 	runtime.GOMAXPROCS(*cpus)
@@ -137,49 +129,9 @@ func main() {
 		}
 	}
 
-	url := flag.Args()[0]
-	method := strings.ToUpper(*m)
-
-	// set content-type
-	header := make(http.Header)
-	header.Set("Content-Type", *contentType)
-	// set any other additional headers
-	if *headers != "" {
-		usageAndExit("Flag '-h' is deprecated, please use '-H' instead.")
-	}
-	// set any other additional repeatable headers
-	for _, h := range hs {
-		match, err := parseInputWithRegexp(h, headerRegexp)
-		if err != nil {
-			usageAndExit(err.Error())
-		}
-		header.Set(match[1], match[2])
-	}
-
-	if *accept != "" {
-		header.Set("Accept", *accept)
-	}
-
-	// set basic auth if set
-	var username, password string
-	if *authHeader != "" {
-		match, err := parseInputWithRegexp(*authHeader, authRegexp)
-		if err != nil {
-			usageAndExit(err.Error())
-		}
-		username, password = match[1], match[2]
-	}
-
-	var bodyAll []byte
-	if *body != "" {
-		bodyAll = []byte(*body)
-	}
-	if *bodyFile != "" {
-		slurp, err := ioutil.ReadFile(*bodyFile)
-		if err != nil {
-			errAndExit(err.Error())
-		}
-		bodyAll = slurp
+	req, body, err := makeRequest(flag.Args()[0])
+	if err != nil {
+		usageAndExit(err.Error())
 	}
 
 	var proxyURL *gourl.URL
@@ -191,18 +143,8 @@ func main() {
 		}
 	}
 
-	req, err := http.NewRequest(method, url, nil)
-	if err != nil {
-		usageAndExit(err.Error())
-	}
-	req.ContentLength = int64(len(bodyAll))
-	if username != "" || password != "" {
-		req.SetBasicAuth(username, password)
-	}
-
-	// set host header if set
-	if *hostHeader != "" {
-		req.Host = *hostHeader
+	if *output != "csv" && *output != "" {
+		usageAndExit("Invalid output type; only csv is supported.")
 	}
 
 	ua := header.Get("User-Agent")
@@ -223,7 +165,7 @@ func main() {
 
 	w := &requester.Work{
 		Request:            req,
-		RequestBody:        bodyAll,
+		RequestBody:        body,
 		N:                  num,
 		C:                  conc,
 		QPS:                q,
@@ -266,24 +208,4 @@ func usageAndExit(msg string) {
 	flag.Usage()
 	fmt.Fprintf(os.Stderr, "\n")
 	os.Exit(1)
-}
-
-func parseInputWithRegexp(input, regx string) ([]string, error) {
-	re := regexp.MustCompile(regx)
-	matches := re.FindStringSubmatch(input)
-	if len(matches) < 1 {
-		return nil, fmt.Errorf("could not parse the provided input; input = %v", input)
-	}
-	return matches, nil
-}
-
-type headerSlice []string
-
-func (h *headerSlice) String() string {
-	return fmt.Sprintf("%s", *h)
-}
-
-func (h *headerSlice) Set(value string) error {
-	*h = append(*h, value)
-	return nil
 }
