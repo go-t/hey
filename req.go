@@ -42,6 +42,7 @@ var (
 	formslice   stringSlice
 	m           = flag.String("m", "", "")
 	headers     = flag.String("h", "", "")
+	bodyBin     = flag.String("d", "", "")
 	bodyFile    = flag.String("D", "", "")
 	accept      = flag.String("A", "", "")
 	contentType = flag.String("T", "", "")
@@ -53,7 +54,7 @@ var (
 
 func init() {
 	flag.Var(&headerslice, "H", "")
-	flag.Var(&queryslice, "d", "")
+	flag.Var(&queryslice, "data-urlencode", "")
 	flag.Var(&formslice, "F", "")
 }
 
@@ -74,6 +75,7 @@ func makeRequest(url string) (*http.Request, []byte, error) {
 			readFile: ioutil.ReadFile,
 		}
 	)
+
 	if len(queryslice) != 0 {
 		ctype = "application/x-www-form-urlencoded"
 		body, err = h.urlEncoded(queryslice)
@@ -83,12 +85,13 @@ func makeRequest(url string) (*http.Request, []byte, error) {
 	} else if *bodyFile != "" {
 		ctype = *contentType
 		body, err = ioutil.ReadFile(*bodyFile)
+	} else if *bodyBin != "" {
+		ctype = *contentType
+		body = []byte(*bodyBin)
 	}
 	if err != nil {
 		return nil, nil, err
 	}
-	header := make(http.Header)
-	header.Set("Content-Type", ctype)
 
 	if *m == "" {
 		if len(body) > 0 {
@@ -100,10 +103,27 @@ func makeRequest(url string) (*http.Request, []byte, error) {
 		method = *m
 	}
 
+	if len(body) > 0 && ctype == "" {
+		sample := bytes.TrimSpace(body)
+		if len(sample) > 0 {
+			if sample[0] == '<' {
+				ctype = "text/html"
+			} else if sample[0] == '{' {
+				ctype = "application/json"
+			} else {
+				ctype = "application/octet-stream"
+			}
+		}
+	}
+
 	// set any other additional headers
 	if *headers != "" {
-		return nil, nil, errors.New("Flag '-h' is deprecated, please use '-H' instead.")
+		return nil, nil, errors.New("flag '-h' is deprecated, please use '-H' instead")
 	}
+
+	header := make(http.Header)
+	header.Set("Content-Type", ctype)
+
 	// set any other additional repeatable headers
 	for _, h := range headerslice {
 		match, err := parseInputWithRegexp(h, headerRegexp)

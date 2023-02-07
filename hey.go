@@ -37,6 +37,7 @@ var (
 	q = flag.Float64("q", 0, "")
 	t = flag.Int("t", 20, "")
 	z = flag.Duration("z", 0, "")
+	v = flag.Bool("v", false, "")
 
 	h2   = flag.Bool("h2", false, "")
 	cpus = flag.Int("cpus", runtime.GOMAXPROCS(-1), "")
@@ -70,16 +71,19 @@ Options:
       For example, -H "Accept: text/html" -H "Content-Type: application/xml" .
   -t  Timeout for each request in seconds. Default is 20, use 0 for infinite.
   -A  HTTP Accept header.
-  -d  HTTP url encoded raw data.
+  -d  HTTP request body.
   -D  HTTP request body from file. For example, /home/user/file.txt or ./file.txt.
   -F  HTTP form data.
   -T  Content-type, defaults to "text/html".
   -U  User-Agent, defaults to version "hey/0.0.1".
   -a  Basic authentication, username:password.
   -x  HTTP Proxy address as host:port.
+  -v  verbose
   -h2 Enable HTTP/2.
 
-  -host	HTTP Host header.
+  -host	                HTTP Host header.
+
+  -data-urlencode       HTTP urlencoded slice.
 
   -disable-compression  Disable compression.
   -disable-keepalive    Disable keep-alive, prevents re-use of TCP
@@ -94,7 +98,7 @@ Options:
 
 func main() {
 	flag.Usage = func() {
-		fmt.Fprint(os.Stderr, fmt.Sprintf(usage, runtime.NumCPU()))
+		fmt.Fprintf(os.Stderr, usage, runtime.NumCPU())
 	}
 
 	flag.Parse()
@@ -104,7 +108,7 @@ func main() {
 
 	if *nofile > 0 {
 		nofile := uint64(*nofile)
-		err := syscall.Setrlimit(syscall.RLIMIT_NOFILE, &syscall.Rlimit{nofile, nofile})
+		err := syscall.Setrlimit(syscall.RLIMIT_NOFILE, &syscall.Rlimit{Cur: nofile, Max: nofile})
 		if err != nil {
 			usageAndExit(fmt.Sprintf("set nofile %v err:%v", nofile, err))
 		}
@@ -164,6 +168,7 @@ func main() {
 		Output:             *output,
 
 		EnableTrace: *enableTrace,
+		Verbose:     *v,
 	}
 	w.Init()
 

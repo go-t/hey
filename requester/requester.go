@@ -20,8 +20,10 @@ import (
 	"crypto/tls"
 	"io"
 	"io/ioutil"
+	"log"
 	"net/http"
 	"net/http/httptrace"
+	"net/http/httputil"
 	"net/url"
 	"os"
 	"sync"
@@ -68,6 +70,8 @@ type Work struct {
 
 	// EnableTrace is an option to enable httpTrace
 	EnableTrace bool
+
+	Verbose bool
 
 	// Timeout in seconds.
 	Timeout int
@@ -186,7 +190,22 @@ func (b *Work) makeRequest(c *http.Client) {
 	if err == nil {
 		size = resp.ContentLength
 		code = resp.StatusCode
-		io.Copy(ioutil.Discard, resp.Body)
+		if b.Verbose {
+			writer := b.writer()
+			head, err := httputil.DumpRequest(req, false)
+			if err != nil {
+				log.Panicln(err)
+			}
+			writer.Write(head)
+			if len(b.RequestBody) > 0 {
+				writer.Write(b.RequestBody)
+				writer.Write([]byte("\r\n"))
+			}
+			writer.Write([]byte("\r\n"))
+			io.Copy(writer, resp.Body)
+		} else {
+			io.Copy(ioutil.Discard, resp.Body)
+		}
 		resp.Body.Close()
 	}
 	t := now()
